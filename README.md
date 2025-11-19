@@ -164,6 +164,15 @@ When processing entire datasets without filtering:
 - No rows are skipped, so lazy optimization provides no value
 - Eager's simpler execution path wins
 
+### Hybrid Eager Approach for Incremental Processing
+
+The "Eager Incremental" scenario uses a hybrid approach:
+1. **Lazy scan + filter** - Uses `scan_csv()` with date filtering for predicate pushdown
+2. **Collect to memory** - Materializes only the filtered data
+3. **Eager execution** - All subsequent operations execute immediately
+
+This gets the I/O efficiency of predicate pushdown while demonstrating eager execution characteristics.
+
 ### Why Lazy Polars Shines for Incremental Updates?
 
 When filtering to only new records:
@@ -171,6 +180,7 @@ When filtering to only new records:
 - Skips reading irrelevant rows entirely
 - Optimizes the entire query plan before execution
 - Streaming execution minimizes memory footprint
+- The entire pipeline remains lazy until final collection
 
 ### Database Trade-offs
 
@@ -226,10 +236,11 @@ Incremental gains are modest in this benchmark (1.3-1.5x), but the real value em
 - You need predictable, consistent performance
 
 ### 3. Context Determines Eager vs Lazy
-- **Full dataset scans:** Eager wins (simpler execution)
-- **Filtered queries:** Lazy wins (predicate pushdown)
-- **Memory constraints:** Lazy wins (streaming)
-- **Low latency:** Eager wins (no planning overhead)
+- **Full dataset scans:** Eager wins (simpler execution, no query planning overhead)
+- **Filtered queries:** Lazy wins (predicate pushdown, skip irrelevant data)
+- **Incremental with filtering:** Hybrid approach (lazy scan + filter, then eager execution)
+- **Memory constraints:** Lazy wins (streaming, no full materialization)
+- **Low latency needs:** Eager wins (immediate execution, predictable performance)
 
 ### 4. Database State Enables Incremental
 SQLite provides:
