@@ -18,11 +18,11 @@ This proof-of-concept explores optimal strategies for processing millions of dai
 
 | Approach | Total Time | Speedup vs Pandas | Best For |
 |----------|------------|-------------------|----------|
-| Pandas Baseline | 70.74s | 1.0x | Legacy systems |
-| **Eager Polars Baseline** | **17.31s** | **4.1x** | Batch processing |
-| Lazy Polars Baseline | 25.98s | 2.7x | Complex queries |
-| Eager Incremental | 19.80s | 3.6x | Fast incremental updates |
-| **Lazy Incremental** | **17.81s** | **4.0x** | **Production pipelines** |
+| Pandas Baseline | 69.68s | 1.0x | Legacy systems |
+| **Eager Polars Baseline** | **16.60s** | **4.2x** | Batch processing |
+| Lazy Polars Baseline | 23.52s | 3.0x | Complex queries |
+| Eager Incremental (Hybrid) | 17.27s | 4.0x | Predictable incremental |
+| **Lazy Incremental** | **16.52s** | **4.2x** | **Production pipelines** |
 
 See [results.md](results.md) for detailed analysis and day-by-day timing breakdowns.
 
