@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Data directory
+data/
+
+# Generated results
+*.csv
+*_results_*.csv
+baseline_results_*.csv
+pandas_baseline_results_*.csv
+eager_polars_baseline_results_*.csv
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+poc_database.db
+
+# Temporary files
+temp_*.csv
+*.zip.tmp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Downloads
+qsv-*.zip
