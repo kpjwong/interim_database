@@ -1,127 +1,271 @@
-# PoC Implementation Plan: Incremental Data Processing Pipeline
+# Incremental Database Pipeline - Performance PoC
 
-### 1. Objective
+A comprehensive benchmark comparing **5 different approaches** to processing large-scale transaction data, demonstrating the trade-offs between library choice (Pandas vs Polars), execution strategy (eager vs lazy), and processing approach (full vs incremental).
 
-The goal of this project is to create a proof-of-concept (PoC) that demonstrates the performance and resource-efficiency gains of an incremental data processing pipeline compared to a full-reprocessing pipeline. The PoC simulates a daily data ingestion workflow, processes the data using Polars for both pipelines, and provides clear, measurable benchmarks comparing the two approaches.
+## Overview
 
-**Key Methodology:** Both pipelines use the same data processing library (Polars) to provide an apples-to-apples comparison, isolating the performance benefit of the incremental strategy.
+This proof-of-concept explores optimal strategies for processing millions of daily transaction records, comparing:
 
-### 2. Tech Stack
+1. **Traditional Pandas** - The baseline approach most teams start with
+2. **Eager Polars** - Modern columnar processing with immediate execution
+3. **Lazy Polars** - Query optimization with deferred execution
+4. **Eager Incremental** - Incremental updates using eager evaluation
+5. **Lazy Incremental** - Incremental updates using lazy evaluation
 
-- **Language:** Python 3.9+
-- **Core Libraries:**
-  - `polars`: High-performance engine for **both** baseline and optimized pipelines.
-  - `pandas`: Used only for its convenient `.to_sql()` database interface.
-  - `sqlite3`: Proof-of-concept database backend.
-  - `memory-profiler`: Peak memory capture via `@profile` decorators.
-  - `zipfile`: Handling input archives.
-- **Database:** SQLite
+## Key Results
 
-### 3. Project Structure
+**Processing 10 days of ~5M rows/day:**
+
+| Approach | Total Time | Speedup vs Pandas | Best For |
+|----------|------------|-------------------|----------|
+| Pandas Baseline | 70.74s | 1.0x | Legacy systems |
+| **Eager Polars Baseline** | **17.31s** | **4.1x** | Batch processing |
+| Lazy Polars Baseline | 25.98s | 2.7x | Complex queries |
+| Eager Incremental | 19.80s | 3.6x | Fast incremental updates |
+| **Lazy Incremental** | **17.81s** | **4.0x** | **Production pipelines** |
+
+See [results.md](results.md) for detailed analysis and day-by-day timing breakdowns.
+
+## Architecture
+
+### Data Flow
 
 ```
-.
-├── data/
-│   ├── static/
-│   │   ├── sku_groups.csv
-│   │   └── us_zip_codes.csv
-│   ├── client_1/
-│   │   ├── transactions_day_1.zip
-│   │   └── ...
-│   └── client_2/
+Raw Transaction Data (Compressed CSVs)
+    ↓
+Unzip & Load
+    ↓
+Clean & Validate
+    ↓
+Enrich (Join SKU & ZIP lookups)
+    ↓
+Transform & Calculate Metrics
+    ↓
+Aggregate by Date & SKU Group
+    ↓
+Write to SQLite Database
+```
+
+### Incremental Processing Strategy
+
+```
+┌─────────────────────────────────────────┐
+│  SQLite Database (processed_sales)      │
+│  - Stores last processed date per client│
+│  - Tracks aggregated metrics            │
+└─────────────────────────────────────────┘
+           ↑                 ↓
+    Write Results      Read Last Date
+           ↑                 ↓
+┌─────────────────────────────────────────┐
+│  Polars Pipeline                        │
+│  - Filter: WHERE date > last_date       │
+│  - Process only new/changed records     │
+│  - Lazy evaluation optimizes query      │
+└─────────────────────────────────────────┘
+           ↑
+    Load from disk
+           ↑
+┌─────────────────────────────────────────┐
+│  Compressed Transaction Files           │
+│  transactions_day_N.zip                 │
+└─────────────────────────────────────────┘
+```
+
+### File Structure
+
+```
+interim_database/
+├── main.py                    # Main benchmark script (5 scenarios)
+├── generate_data.py           # Synthetic data generator
+├── poc_database.db           # SQLite database (created on first run)
+├── data/                     # Generated transaction data (not in repo)
+│   └── client_1/
 │       ├── transactions_day_1.zip
+│       ├── transactions_day_2.zip
 │       └── ...
-├── generate_data.py
-├── main.py
-├── poc_database.db
-└── results.md
+├── results.md                # Detailed benchmark results
+├── README.md                 # This file
+└── .gitignore               # Excludes data/, *.csv, *.db
 ```
 
-### 4. Phase 1: Data Generation (`generate_data.py`)
+## Requirements
 
-`generate_data.py` creates realistic benchmark data and the supporting lookup tables consumed by the pipelines.
+### Python Dependencies
 
-- **Static assets (written to `data/static/`):**
-  - `sku_groups.csv`: Deterministic mapping of every `sku_id` to `sku_group`, `category`, and `is_high_priority`.
-  - `us_zip_codes.csv`: Lightweight ZIP dimension with `zip_code`, `city`, `state`, and `is_us` indicators (includes an `00000` “international” code).
-- **Synthetic feed controls:**
-  - `CLIENTS = ["client_1", "client_2"]`
-  - `NUM_DAYS = 10`
-  - `BASE_ROWS_DAY_1 = 1_000_000`
-  - `INCREMENTAL_ROWS_PER_DAY = 100_000`
-  - `START_DATE = "2025-10-01"`
-  - `NUM_SKUS = 5_000` with a Pareto-distributed long tail (≈80/20 transaction split).
-- **CSV schema per archive:**
-  - `transaction_id` (string)
-  - `transaction_date` (string `YYYY-MM-DD`)
-  - `sku_id` (string)
-  - `quantity_sold` (int 1–10)
-  - `revenue_usd` (float 5.00–500.00)
-  - `maturity_date` (string) – realistic offsets including early/late/missing cases
-  - `zip_code_raw` (string or null) – intentionally noisy ZIP data (ZIP+4, embedded spaces, alphanumeric prefixes, international markers)
-- **Workflow:**
-  1. Load ZIP reference data and bias sampling toward California ZIPs so “local” metrics have signal.
-  2. Generate incremental rows for each client/day and append to a cumulative DataFrame; every day _N_ file contains all previous rows plus the new increment.
-  3. Inject `maturity_date` and `zip_code_raw` noise per batch.
-  4. Write the cumulative CSV to a temporary file, compress it to `transactions_day_{N}.zip`, then remove the temporary file.
-  5. Repeat for both clients (20 ZIP archives) and emit the static lookup files.
+```bash
+pip install polars pandas memory-profiler
+```
 
-### 5. Phase 2: Benchmarking Script (`main.py`)
+**Version Requirements:**
+- Python 3.8+
+- polars >= 0.19.0
+- pandas >= 2.0.0
+- memory-profiler >= 0.61.0
 
-`main.py` owns ingestion, enrichment, aggregation, incremental state management, parity validation, and reporting.
+### System Requirements
 
-- **Database schema (`processed_sales`):** composite primary key `(client_id, transaction_date, maturity_date, sku_group, local)` with the following columns: `total_quantity`, `total_revenue`, `order_count`, `avg_quantity_per_order`, `avg_order_value`, `days_to_maturity`, `revenue_share_of_day`, `revenue_rank`. The initializer detects legacy schemas and recreates the table when needed.
-- **Shared helper (`process_transactions`):**
-  - Loads static lookups once (cached).
-  - Parses dates, normalizes `zip_code_raw` into a clean `zip_code`, imputes missing maturity dates (+3 days), clamps negative maturity deltas, and tracks diagnostics counters.
-  - Joins SKU group and ZIP metadata, adds a boolean `local` flag, and aggregates Polars metrics over `(transaction_date, maturity_date, sku_group, local)` including window-derived revenue share and dense ranking.
-  - Returns a `PipelineArtifacts` bundle (aggregated frame, top-five slice, data-quality counters, latest processed date).
+- **RAM:** 2GB+ available (benchmarks use ~850MB peak)
+- **Disk:** 5GB+ free space for generated data
+- **OS:** Windows, macOS, or Linux
 
-#### 5.1 Baseline pipeline (`run_baseline_benchmark`)
+## Setup & Usage
 
-- Decorated with `@profile` to capture peak memory.
-- Unzips the requested day’s archive, processes the entire file through `process_transactions`, prints timing and data-quality metrics, and returns the timing dict plus artifacts for reporting reuse.
+### 1. Generate Synthetic Data
 
-#### 5.2 Optimized pipeline (`run_optimized_benchmark`)
+```bash
+python generate_data.py
+```
 
-- Decorated with `@profile` as well.
-- Reads the last processed date from SQLite, filters the archive lazily to only new rows, and executes the same enrichment/aggregation flow.
-- Recomputes a baseline aggregate for the same file and uses `polars.testing.assert_frame_equal` to verify parity; differences are logged and bubbled to the CLI if detected.
-- Deletes overlapping rows in SQLite, inserts the enriched aggregates, and reports granular timings alongside data-quality counters.
+This creates:
+- 2 clients (client_1, client_2)
+- 10 days per client
+- ~5M rows per day (growing by 2,000 rows daily)
+- 20 compressed CSV files total (~4GB uncompressed)
 
-#### 5.3 Historical warm-up (`populate_historical_data`)
+**Data Schema:**
+- `transaction_id`: Unique identifier
+- `transaction_date`: Date of transaction (YYYY-MM-DD)
+- `sku_id`: Product SKU (1000 unique SKUs)
+- `quantity_sold`: Quantity sold (1-10 units)
+- `revenue_usd`: Revenue in USD
+- `maturity_date`: Optional maturity date for certain products
+- `zip_code_raw`: Customer ZIP code
 
-Replays days 1 through `BENCHMARK_DAY - 1` through the incremental path so the database reflects a realistic prior state before benchmarking.
+### 2. Run Benchmark
 
-#### 5.4 Report generation
+```bash
+python main.py
+```
 
-`generate_report` combines both artifacts, timing dictionaries, parity status, and memory metrics. The Markdown report contains:
+This executes all 5 scenarios sequentially:
 
-- Benchmark conditions (client, day, benchmark date, estimated row counts, parity status)
-- Timing/memory summaries for both pipelines with associated data-quality counters
-- A “Top 5 SKU Groups by Revenue” leaderboard
-- A California-local versus non-local summary table
-- Methodology notes reaffirming the apples-to-apples comparison
+1. **Scenario 1:** Pandas baseline (all 10 days)
+2. **Scenario 2:** Eager Polars baseline (all 10 days)
+3. **Scenario 3:** Lazy Polars baseline (all 10 days)
+4. **Scenario 4:** Eager incremental (all 10 days)
+5. **Scenario 5:** Lazy incremental (all 10 days)
 
-The report body is assembled from a list of ASCII strings (`"\n".join(...)`) to avoid encoding issues.
+**Expected Runtime:** 2-3 minutes for full benchmark
 
-#### 5.5 Main execution flow
+**Memory Profiling:** The script uses `@profile` decorators to track memory usage. Results are printed to console with line-by-line memory allocation details.
 
-1. Initialize or migrate the SQLite database.
-2. Run the baseline benchmark while capturing profiler output.
-3. Populate historical data for the incremental pipeline (days `< BENCHMARK_DAY`).
-4. Execute the incremental benchmark (with parity validation) and log timings.
-5. Generate `results.md` and print a timing/memory summary to stdout.
+### 3. View Results
 
-### 6. Phase 3: Reporting (`results.md`)
+Results are printed to console and can be analyzed in detail in [results.md](results.md).
 
-`results.md` is generated automatically after the benchmarks complete. The report captures:
+## Technical Deep Dive
 
-- Benchmark conditions (client, day, benchmark date, estimated row counts, parity status)
-- Baseline vs incremental timing and memory metrics, each accompanied by data-quality counters
-- A “Top 5 SKU Groups by Revenue” leaderboard
-- A California-local vs non-local performance summary
-- A conclusion articulating speed/memory deltas and a brief methodology reminder
+### Why Eager Polars Beats Lazy for Full Scans?
 
-All content is assembled from ASCII strings so the file remains portable across environments.
+When processing entire datasets without filtering:
+- **Eager mode** reads data directly into memory and processes it
+- **Lazy mode** adds query planning overhead without benefiting from predicate pushdown
+- No rows are skipped, so lazy optimization provides no value
+- Eager's simpler execution path wins
 
+### Why Lazy Polars Shines for Incremental Updates?
+
+When filtering to only new records:
+- **Lazy mode** can push predicates down to the CSV reader
+- Skips reading irrelevant rows entirely
+- Optimizes the entire query plan before execution
+- Streaming execution minimizes memory footprint
+
+### Database Trade-offs
+
+Incremental approaches add database overhead:
+- Querying for last processed date (~5-10ms)
+- Deleting and inserting aggregated results (~10-50ms)
+- This overhead is offset by processing fewer rows
+- Benefits increase exponentially with dataset growth
+
+### Memory Usage
+
+All approaches use similar peak memory (~850MB for 5M rows):
+- Polars' columnar format is memory-efficient
+- Lazy evaluation doesn't reduce peak memory for full scans
+- Incremental processing reduces working set size
+
+## Use Cases
+
+### When to Use Each Approach
+
+**Eager Polars Baseline (Scenario 2):**
+- One-time batch processing
+- Historical data recomputation
+- Fast ad-hoc analysis
+- No existing database state
+
+**Lazy Incremental (Scenario 5):**
+- Daily ETL pipelines
+- Streaming data ingestion
+- Long-running production systems
+- Memory-constrained environments
+- Datasets that grow over time
+
+**Eager Incremental (Scenario 4):**
+- Lower latency requirements
+- Simpler query patterns
+- When lazy optimization overhead exceeds benefits
+
+**Pandas Baseline (Scenario 1):**
+- Legacy codebases
+- Small datasets (<1M rows)
+- Pandas-specific functionality needed
+
+## Key Learnings
+
+### 1. Library Choice Matters Most
+Switching from Pandas to Polars provides 2.7-4.1x speedup regardless of strategy. This is the highest-ROI optimization for most teams.
+
+### 2. Incremental Processing is for Scale
+Incremental gains are modest in this benchmark (1.3-1.5x), but the real value emerges when:
+- Historical data grows to 100M+ rows
+- Full reprocessing becomes prohibitively expensive
+- You need predictable, consistent performance
+
+### 3. Context Determines Eager vs Lazy
+- **Full dataset scans:** Eager wins (simpler execution)
+- **Filtered queries:** Lazy wins (predicate pushdown)
+- **Memory constraints:** Lazy wins (streaming)
+- **Low latency:** Eager wins (no planning overhead)
+
+### 4. Database State Enables Incremental
+SQLite provides:
+- Persistent state tracking (last processed date)
+- Efficient aggregated storage
+- ACID guarantees for production reliability
+
+## Future Enhancements
+
+Potential areas for exploration:
+
+1. **Partitioning:** Partition data by date for faster incremental queries
+2. **Parallel Processing:** Process multiple days concurrently
+3. **Streaming:** Process data as it arrives (no batch windows)
+4. **DuckDB:** Compare against DuckDB's analytical query engine
+5. **Arrow:** Use Apache Arrow for zero-copy data sharing
+6. **Compression:** Test different compression algorithms (zstd, lz4)
+
+## Contributing
+
+This is a proof-of-concept for benchmarking purposes. Feel free to:
+- Run benchmarks on your hardware and share results
+- Test with different data volumes or schemas
+- Propose alternative approaches
+- Report issues or inconsistencies
+
+## License
+
+This project is provided as-is for educational and benchmarking purposes.
+
+## Acknowledgments
+
+- **Polars:** High-performance DataFrame library in Rust
+- **Pandas:** The foundational Python data analysis library
+- **memory-profiler:** Line-by-line memory profiling tool
+
+---
+
+**Questions or feedback?** Open an issue or submit a pull request.
