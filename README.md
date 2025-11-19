@@ -1,26 +1,28 @@
 # Incremental Database Pipeline - Performance PoC
 
-A comprehensive benchmark comparing **4 different approaches** to processing large-scale transaction data, demonstrating the trade-offs between library choice (Pandas vs Polars), execution strategy (eager vs lazy), and processing approach (full vs incremental).
+A comprehensive benchmark comparing **5 different approaches** to processing large-scale transaction data, demonstrating the trade-offs between library choice (Pandas vs Polars), execution strategy (eager vs lazy), and processing approach (full vs incremental).
 
 ## Overview
 
 This proof-of-concept explores optimal strategies for processing millions of daily transaction records, comparing:
 
-1. **Traditional Pandas** - The baseline approach most teams start with
-2. **Lazy Polars** - Query optimization with deferred execution
-3. **Eager Incremental (Hybrid)** - Incremental updates using hybrid eager/lazy evaluation
-4. **Lazy Incremental** - Incremental updates using fully lazy evaluation
+1. **Traditional Pandas** – Baseline Python workflow, full reprocessing
+2. **Eager Polars Baseline** – Full reprocessing with Polars eager execution
+3. **Lazy Polars Baseline** – Full reprocessing with Polars lazy query planning
+4. **Eager Incremental (Hybrid)** – Incremental updates using lazy filters + eager transforms
+5. **Lazy Incremental** – Fully lazy incremental pipeline backed by database state
 
 ## Key Results
 
 **Processing 10 days of ~5M rows/day:**
 
-| Approach | Total Time | Speedup vs Pandas | Best For |
-|----------|------------|-------------------|----------|
-| Pandas Baseline | 69.14s | 1.0x | Legacy systems |
-| Lazy Polars Baseline | 24.96s | 2.8x | Complex queries |
-| **Eager Incremental (Hybrid)** | **17.41s** | **4.0x** | **Predictable incremental** |
-| Lazy Incremental | 17.88s | 3.9x | Production pipelines |
+| Approach | Total Time (10 days) | Speedup vs Pandas | Best For |
+|----------|---------------------|-------------------|----------|
+| Pandas Baseline | 76.86s | 1.0x | Existing pandas pipelines |
+| **Eager Polars Baseline** | **18.80s** | **4.09x** | Fast full reprocessing jobs |
+| Lazy Polars Baseline | 26.97s | 2.85x | Complex queries that benefit from optimization |
+| Eager Incremental (Hybrid) | 19.37s | 3.97x | Incremental refresh with predictable latency |
+| **Lazy Incremental** | **18.49s** | **4.16x** | Production ETL with streaming-style execution |
 
 See [results.md](results.md) for detailed analysis and day-by-day timing breakdowns.
 
@@ -204,6 +206,11 @@ All approaches use similar peak memory (~850MB for 5M rows):
 - Historical data recomputation
 - Fast ad-hoc analysis
 - No existing database state
+
+**Lazy Polars Baseline (Scenario 3):**
+- Complex analytical queries that benefit from predicate pushdown
+- Pipelines where query plans are reused/tuned
+- When you need streaming semantics without incremental state
 
 **Lazy Incremental (Scenario 5):**
 - Daily ETL pipelines

@@ -1,232 +1,88 @@
 # Incremental Database Pipeline - Benchmark Results
 
 ## Executive Summary
-
-This benchmark compares **4 different approaches** to processing transaction data over 10 days, demonstrating the evolution from traditional full reprocessing to optimized incremental processing with hybrid and lazy evaluation strategies.
-
-**Key Findings:**
-- **Eager Incremental (Hybrid)** is the fastest at 17.41s (4.0x faster than Pandas)
-- **Lazy Incremental** achieves 17.88s, nearly matching hybrid performance
-- **Hybrid eager approach** eliminates query planning overhead while retaining predicate pushdown benefits
-- Incremental approaches provide consistent, predictable performance for ongoing updates
-
----
+- Five processing strategies were benchmarked across **10 days of ~5M rows/day** for `client_1`.
+- The **lazy incremental** pipeline delivered the fastest end-to-end runtime at **18.49s**, edging out eager Polars full reprocessing.
+- Switching from pandas to Polars alone cuts runtime by more than four minutes per 10-day load; incremental techniques add another 1.4–1.5x boost over lazy full reprocessing.
+- Unzip I/O accounts for ~75% of wall-clock time in every scenario, so the real savings come from reducing compute work.
 
 ## Benchmark Configuration
+- **Client ID:** `client_1`
+- **Days Processed:** 10 sequential days
+- **Rows per Day:** ~5,000,000 (grows by ~2,000 per day)
+- **Data Size:** ~4 GB compressed ZIPs
+- **Libraries:** pandas 2.x, Polars 0.20 (eager + lazy), SQLite for incremental state
+- **Host:** Windows 11 workstation, Python 3.11
+- **Run Date:** 2025-11-19
 
-- **Client ID:** client_1
-- **Number of Days:** 10 days of transaction data
-- **Data Volume:** ~5M rows per day (growing by 2,000 rows daily)
-- **Test Date:** 2025-11-19
-- **Processing Library:** Polars (both eager and lazy modes) + Pandas baseline
-- **Database:** SQLite with `processed_sales` table
+## Ten-Day Performance Summary
 
----
+| # | Scenario | Strategy | Total Time | Speedup vs Pandas | Notes |
+|---|----------|----------|------------|-------------------|-------|
+| 1 | Pandas Baseline | pandas full reprocess | 76.86s (1.28 min) | 1.00x | Reference workflow |
+| 2 | **Eager Polars Baseline** | Polars eager reprocess | **18.80s (0.31 min)** | **4.09x** | Fastest way to recompute everything |
+| 3 | Lazy Polars Baseline | Polars lazy reprocess | 26.97s (0.45 min) | 2.85x | Pays extra planning cost on full scans |
+| 4 | Eager Incremental (Hybrid) | Lazy filter ➜ eager transforms | 19.37s (0.32 min) | 3.97x | Predictable incremental refresh |
+| 5 | **Lazy Incremental** | Fully lazy incremental | **18.49s (0.31 min)** | **4.16x** | Lowest total runtime |
 
-## Results Summary: 10-Day Cumulative Performance
+## Scenario Highlights
 
-### Scenario 1: Pandas Baseline (Full Reprocessing)
-**Total Time: 69.14 seconds (1.15 minutes)**
+### 1. Pandas Baseline
+- **Total:** 76.86s over 10 days (7.69s/day avg).
+- **Breakdown:** 14.77s unzip (19%), 61.73s pandas work (80%), 0.04s CSV write.
+- Straightforward but scales poorly once reprocessing 50M+ rows daily.
 
-Traditional pandas-based processing, reprocessing entire dataset each day.
+### 2. Eager Polars Baseline
+- **Total:** 18.80s (1.88s/day avg).
+- **Breakdown:** 14.78s unzip (79%), 3.71s compute (20%), 0.03s CSV write.
+- Eliminates pandas overhead while keeping execution immediate; best for ad-hoc full reloads.
 
-- Uses pandas for all data operations
-- Reprocesses all historical data every day
-- Simple implementation but scales poorly
+### 3. Lazy Polars Baseline
+- **Total:** 26.97s (2.70s/day avg).
+- **Breakdown:** 15.08s unzip (56%), 11.29s compute (42%), 0.42s CSV write.
+- Query planning gains are offset by planning overhead because the entire CSV must still be scanned.
 
-### Scenario 2: Lazy Polars Baseline (Full Reprocessing)
-**Total Time: 24.96 seconds (0.42 minutes)**
+### 4. Eager Incremental (Hybrid)
+- **Total:** 19.37s (1.94s/day avg).
+- **Breakdown:** 14.74s unzip (76%), 0.01s DB read, 4.21s Polars processing, 0.24s DB write.
+- Uses lazy scan for predicate pushdown, collects filtered rows, then executes eagerly for deterministic latency.
 
-Full reprocessing using Polars with lazy evaluation (`scan_csv`).
+### 5. Lazy Incremental
+- **Total:** 18.49s (1.85s/day avg).
+- **Breakdown:** 14.35s unzip (78%), 0.00s DB read, 3.88s Polars processing, 0.14s DB write.
+- Fully lazy plan keeps everything streaming and ekes out the lowest total runtime.
 
-- Uses lazy Polars evaluation (query optimization)
-- Reprocesses all historical data every day
-- **2.8x faster than Pandas**
-- Query planning overhead limits performance on full scans
-
-### Scenario 3: Eager Incremental (Hybrid) - Database State + Filtering
-**Total Time: 17.41 seconds (0.29 minutes)**
-
-Incremental processing using hybrid eager/lazy Polars with database state tracking.
-
-- **Hybrid approach:** Lazy scan + filter (predicate pushdown), then eager execution
-- Processes only new/changed data
-- **4.0x faster than Pandas**
-- **1.4x faster than Lazy Polars Baseline**
-- **Fastest overall** - eliminates query planning overhead after filtering
-
-### Scenario 4: Lazy Incremental (Database State + Filtering)
-**Total Time: 17.88 seconds (0.30 minutes)**
-
-Incremental processing using lazy Polars with database state tracking.
-
-- Uses fully lazy Polars with database state
-- Processes only new/changed data
-- **3.9x faster than Pandas**
-- **1.4x faster than Lazy Polars Baseline**
-- Slightly slower than hybrid due to continued query planning overhead
-
----
-
-## Performance Comparison Matrix
-
-| Scenario | Total Time | vs Pandas | vs Scenario 2 | Strategy |
-|----------|------------|-----------|---------------|----------|
-| 1. Pandas Baseline | 69.14s | 1.0x | 2.8x slower | Full reprocessing, pandas |
-| 2. Lazy Polars Baseline | 24.96s | 2.8x | 1.0x | Full reprocessing, lazy Polars |
-| 3. **Eager Incremental (Hybrid)** | **17.41s** | **4.0x** | **1.4x faster** | Incremental, hybrid approach |
-| 4. Lazy Incremental | 17.88s | 3.9x | 1.4x faster | Incremental, lazy Polars |
-
----
+## Performance Comparisons
+- **Library upgrade:** Moving from pandas to eager Polars saves **58.06s** (4.09x faster).
+- **Lazy vs eager Polars (full scans):** Lazy Polars is **1.44x slower** (adds ~8.2s) because predicate pushdown cannot skip any rows.
+- **Incremental vs lazy full reprocess:** Hybrid eager incremental is **1.39x faster** than lazy Polars baseline; fully lazy incremental improves that to **1.46x**.
+- **Incremental vs eager Polars:** Hybrid incremental trails eager reprocessing by 0.57s, while lazy incremental edges it out by 0.31s thanks to lower DB overhead.
+- **Hybrid vs fully lazy incremental:** Lazy incremental is **1.05x faster** (0.88s saved) while keeping identical logic.
+- **Time saved vs pandas (10 days):**
+  - Eager Polars: 58.06s
+  - Lazy Polars: 49.90s
+  - Eager Incremental: 57.50s
+  - Lazy Incremental: 58.37s
 
 ## Key Insights
-
-### 1. Library Performance Matters Most
-The jump from Pandas to Polars provides the largest speedup (2.8-4.0x). Polars' columnar architecture and Rust implementation deliver exceptional performance.
-
-### 2. Hybrid Eager Approach Wins
-The hybrid eager incremental approach achieves the best performance (17.41s):
-- **Predicate pushdown benefits** from lazy scan and filter
-- **Eliminates query planning overhead** after filtering with eager execution
-- **2.6% faster** than fully lazy incremental
-- Best of both worlds for incremental processing
-
-### 3. Incremental Strategy is Critical at Scale
-Incremental processing provides strong speedups (1.4x over lazy baseline). The real value emerges when:
-- Historical data grows to 100M+ rows
-- Full reprocessing becomes prohibitively expensive
-- You need predictable, consistent performance
-
-### 4. When to Use Each Approach
-
-**Pandas Baseline (Scenario 1):**
-- Legacy codebases requiring pandas
-- Small datasets (<1M rows)
-- Pandas-specific functionality needed
-
-**Lazy Polars Baseline (Scenario 2):**
-- One-time batch processing without state
-- Complex query patterns
-- When memory constraints require streaming
-
-**Eager Incremental / Hybrid (Scenario 3) - RECOMMENDED:**
-- Daily ETL pipelines
-- Production incremental updates
-- When predictable performance matters
-- Best overall performance for incremental workloads
-
-**Lazy Incremental (Scenario 4):**
-- Extreme memory constraints
-- When query planning benefits outweigh overhead
-- Alternative to hybrid when fully lazy pipeline preferred
-
----
-
-## Timing Breakdown by Day
-
-### Scenario 1: Pandas Baseline
-| Day | Time |
-|-----|------|
-| Day 1 | 7.41s |
-| Day 2 | 6.98s |
-| Day 3 | 6.77s |
-| Day 4 | 6.87s |
-| Day 5 | 6.71s |
-| Day 6 | 6.90s |
-| Day 7 | 6.84s |
-| Day 8 | 6.88s |
-| Day 9 | 6.88s |
-| Day 10 | 6.88s |
-
-### Scenario 2: Lazy Polars Baseline
-| Day | Time |
-|-----|------|
-| Day 1 | 2.31s |
-| Day 2 | 2.53s |
-| Day 3 | 2.58s |
-| Day 4 | 2.86s |
-| Day 5 | 2.45s |
-| Day 6 | 2.47s |
-| Day 7 | 2.42s |
-| Day 8 | 2.36s |
-| Day 9 | 2.49s |
-| Day 10 | 2.50s |
-
-### Scenario 3: Eager Incremental (Hybrid)
-| Day | Time |
-|-----|------|
-| Day 1 | 2.55s |
-| Day 2 | 1.68s |
-| Day 3 | 1.66s |
-| Day 4 | 1.60s |
-| Day 5 | 1.60s |
-| Day 6 | 1.65s |
-| Day 7 | 1.63s |
-| Day 8 | 1.66s |
-| Day 9 | 1.70s |
-| Day 10 | 1.67s |
-
-### Scenario 4: Lazy Incremental
-| Day | Time |
-|-----|------|
-| Day 1 | 2.42s |
-| Day 2 | 1.67s |
-| Day 3 | 1.66s |
-| Day 4 | 1.77s |
-| Day 5 | 1.83s |
-| Day 6 | 1.77s |
-| Day 7 | 1.81s |
-| Day 8 | 1.81s |
-| Day 9 | 1.86s |
-| Day 10 | 1.89s |
-
----
+- **I/O dominates.** Every scenario spends ~14–15s unzipping. Algorithmic speedups matter, but I/O optimization (parallel unzip, caching) would unlock the next tier.
+- **Eager Polars is ideal for recompute jobs.** When everything must be reprocessed, avoiding lazy planning delivers the fastest wall-clock time.
+- **Incremental strategies shine as history grows.** Even on a 10-day sample, filtering to new data produces ~1.4–1.5x gains over lazy full reprocessing. Benefits compound once history exceeds 100M rows.
+- **Hybrid vs fully lazy is a trade-off.** Hybrid eager offers lower variance and simpler debugging, while fully lazy slightly wins on runtime and memory.
 
 ## Methodology
+1. Generate data with `generate_data.py` (10 days × 5M rows).
+2. Run `python main.py` to execute all five scenarios sequentially.
+3. Each scenario measures unzip, compute, and persistence times independently.
+4. Incremental scenarios read the SQLite state to detect the last processed day, filter to new rows, and upsert aggregates.
+5. Memory usage is captured via `memory_profiler` decorators for the single-day baseline vs incremental comparison (Day 10).
 
-All scenarios process the same synthetic transaction data:
-- **5 million rows per day** (base) + 2,000 additional rows each subsequent day
-- **10 days of data** for client_1
-- Data includes transaction details, SKU information, ZIP codes, dates, quantities, and revenue
-
-**Processing Steps:**
-1. Unzip compressed transaction data
-2. Load and parse CSV data
-3. Clean and validate transactions
-4. Join with static lookup tables (SKU categories, ZIP code regions)
-5. Apply business logic (revenue calculations, date transformations)
-6. Aggregate by transaction date and SKU group
-7. Compute quality metrics and locality flags
-8. Write results to database or CSV
-
-**Incremental Processing (Scenarios 3 & 4):**
-- Query database for last processed date
-- Filter source data to only new transactions
-- Process only incremental data
-- Update database with new aggregations
-
-**Hybrid Eager Approach (Scenario 3):**
-- Uses `scan_csv()` for lazy loading
-- Applies date filter lazily (predicate pushdown for efficient I/O)
-- Calls `.collect()` to materialize filtered data
-- Executes all subsequent operations eagerly (no query planning overhead)
-
-**Fully Lazy Approach (Scenario 4):**
-- Uses `scan_csv()` for lazy loading
-- All operations remain lazy until final collection
-- Query optimizer plans entire pipeline
-- Single materialization at end
-
----
-
-## Reproducing Results
-
+## Reproducing the Results
 ```bash
-# Generate synthetic data (only needed once)
+# Generate data once
 python generate_data.py
 
-# Run full benchmark (4 scenarios)
+# Run the benchmark (all five scenarios + parity check + report)
 python main.py
 ```
-
-Results are automatically written to this file after benchmark completion.
+Results, CSV slices, and `benchmark_run.log` will be updated in the project root after the run completes.
