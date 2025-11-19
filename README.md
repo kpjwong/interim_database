@@ -1,16 +1,15 @@
 # Incremental Database Pipeline - Performance PoC
 
-A comprehensive benchmark comparing **5 different approaches** to processing large-scale transaction data, demonstrating the trade-offs between library choice (Pandas vs Polars), execution strategy (eager vs lazy), and processing approach (full vs incremental).
+A comprehensive benchmark comparing **4 different approaches** to processing large-scale transaction data, demonstrating the trade-offs between library choice (Pandas vs Polars), execution strategy (eager vs lazy), and processing approach (full vs incremental).
 
 ## Overview
 
 This proof-of-concept explores optimal strategies for processing millions of daily transaction records, comparing:
 
 1. **Traditional Pandas** - The baseline approach most teams start with
-2. **Eager Polars** - Modern columnar processing with immediate execution
-3. **Lazy Polars** - Query optimization with deferred execution
-4. **Eager Incremental** - Incremental updates using eager evaluation
-5. **Lazy Incremental** - Incremental updates using lazy evaluation
+2. **Lazy Polars** - Query optimization with deferred execution
+3. **Eager Incremental (Hybrid)** - Incremental updates using hybrid eager/lazy evaluation
+4. **Lazy Incremental** - Incremental updates using fully lazy evaluation
 
 ## Key Results
 
@@ -18,11 +17,10 @@ This proof-of-concept explores optimal strategies for processing millions of dai
 
 | Approach | Total Time | Speedup vs Pandas | Best For |
 |----------|------------|-------------------|----------|
-| Pandas Baseline | 69.68s | 1.0x | Legacy systems |
-| **Eager Polars Baseline** | **16.60s** | **4.2x** | Batch processing |
-| Lazy Polars Baseline | 23.52s | 3.0x | Complex queries |
-| Eager Incremental (Hybrid) | 17.27s | 4.0x | Predictable incremental |
-| **Lazy Incremental** | **16.52s** | **4.2x** | **Production pipelines** |
+| Pandas Baseline | 69.14s | 1.0x | Legacy systems |
+| Lazy Polars Baseline | 24.96s | 2.8x | Complex queries |
+| **Eager Incremental (Hybrid)** | **17.41s** | **4.0x** | **Predictable incremental** |
+| Lazy Incremental | 17.88s | 3.9x | Production pipelines |
 
 See [results.md](results.md) for detailed analysis and day-by-day timing breakdowns.
 

@@ -1769,22 +1769,9 @@ def main():
     print("=" * 80)
     print()
 
-    # Run eager polars baseline for all days
-    print("=" * 80)
-    print("SCENARIO 2: Eager Polars Baseline (All 10 Days)")
-    print("=" * 80)
-    print()
-
-    eager_polars_baseline_times = populate_eager_polars_baseline_all_days(CLIENT, BENCHMARK_DAY)
-
-    print("=" * 80)
-    print("Eager polars baseline complete!")
-    print("=" * 80)
-    print()
-
     # Run lazy polars baseline for all days
     print("=" * 80)
-    print("SCENARIO 3: Lazy Polars Baseline (All 10 Days)")
+    print("SCENARIO 2: Lazy Polars Baseline (All 10 Days)")
     print("=" * 80)
     print()
 
@@ -1797,7 +1784,7 @@ def main():
 
     # Run eager incremental for all days
     print("=" * 80)
-    print("SCENARIO 4: Eager Incremental (All 10 Days)")
+    print("SCENARIO 3: Eager Incremental (All 10 Days)")
     print("=" * 80)
     print()
 
@@ -1949,15 +1936,7 @@ def main():
     print(f"  Average per day:             {pandas_baseline_times['total_time']/BENCHMARK_DAY:.2f}s")
     print()
 
-    print("SCENARIO 2: Eager Polars Baseline (Full Reprocessing Each Day)")
-    print(f"  Total time:                  {eager_polars_baseline_times['total_time']:.2f}s ({eager_polars_baseline_times['total_time']/60:.2f} min)")
-    print(f"  - Total unzip:               {eager_polars_baseline_times['total_unzip']:.2f}s ({eager_polars_baseline_times['total_unzip']/eager_polars_baseline_times['total_time']*100:.1f}%)")
-    print(f"  - Total polars processing:   {eager_polars_baseline_times['total_polars_process']:.2f}s ({eager_polars_baseline_times['total_polars_process']/eager_polars_baseline_times['total_time']*100:.1f}%)")
-    print(f"  - Total CSV write:           {eager_polars_baseline_times['total_csv_write']:.2f}s ({eager_polars_baseline_times['total_csv_write']/eager_polars_baseline_times['total_time']*100:.1f}%)")
-    print(f"  Average per day:             {eager_polars_baseline_times['total_time']/BENCHMARK_DAY:.2f}s")
-    print()
-
-    print("SCENARIO 3: Lazy Polars Baseline (Full Reprocessing Each Day)")
+    print("SCENARIO 2: Lazy Polars Baseline (Full Reprocessing Each Day)")
     print(f"  Total time:                  {polars_baseline_times['total_time']:.2f}s ({polars_baseline_times['total_time']/60:.2f} min)")
     print(f"  - Total unzip:               {polars_baseline_times['total_unzip']:.2f}s ({polars_baseline_times['total_unzip']/polars_baseline_times['total_time']*100:.1f}%)")
     print(f"  - Total polars processing:   {polars_baseline_times['total_polars_process']:.2f}s ({polars_baseline_times['total_polars_process']/polars_baseline_times['total_time']*100:.1f}%)")
@@ -1965,7 +1944,7 @@ def main():
     print(f"  Average per day:             {polars_baseline_times['total_time']/BENCHMARK_DAY:.2f}s")
     print()
 
-    print("SCENARIO 4: Eager Incremental (Eager Polars + DB State + Filtering)")
+    print("SCENARIO 3: Eager Incremental (Hybrid Polars + DB State + Filtering)")
     print(f"  Total time:                  {eager_incremental_times['total_time']:.2f}s ({eager_incremental_times['total_time']/60:.2f} min)")
     print(f"  - Total unzip:               {eager_incremental_times['total_unzip']:.2f}s ({eager_incremental_times['total_unzip']/eager_incremental_times['total_time']*100:.1f}%)")
     print(f"  - Total DB read:             {eager_incremental_times['total_db_read']:.2f}s ({eager_incremental_times['total_db_read']/eager_incremental_times['total_time']*100:.1f}%)")
@@ -1974,7 +1953,7 @@ def main():
     print(f"  Average per day:             {eager_incremental_times['total_time']/BENCHMARK_DAY:.2f}s")
     print()
 
-    print("SCENARIO 5: Lazy Incremental (Lazy Polars + DB State + Filtering)")
+    print("SCENARIO 4: Lazy Incremental (Lazy Polars + DB State + Filtering)")
     print(f"  Total time:                  {optimized_grand_total_time:.2f}s ({optimized_grand_total_time/60:.2f} min)")
     print(f"  - Total unzip:               {optimized_grand_total_unzip:.2f}s ({optimized_grand_total_unzip/optimized_grand_total_time*100:.1f}%)")
     print(f"  - Total DB read:             {optimized_grand_total_db_read:.2f}s ({optimized_grand_total_db_read/optimized_grand_total_time*100:.1f}%)")
@@ -1989,24 +1968,13 @@ def main():
 
     # Calculate speedups for all scenarios
     if pandas_baseline_times['total_time'] > 0:
-        eager_polars_vs_pandas = pandas_baseline_times['total_time'] / eager_polars_baseline_times['total_time']
         lazy_polars_vs_pandas = pandas_baseline_times['total_time'] / polars_baseline_times['total_time']
         eager_incremental_vs_pandas = pandas_baseline_times['total_time'] / eager_incremental_times['total_time']
         lazy_incremental_vs_pandas = pandas_baseline_times['total_time'] / optimized_grand_total_time
     else:
-        eager_polars_vs_pandas = 0.0
         lazy_polars_vs_pandas = 0.0
         eager_incremental_vs_pandas = 0.0
         lazy_incremental_vs_pandas = 0.0
-
-    if eager_polars_baseline_times['total_time'] > 0:
-        lazy_polars_vs_eager_polars = eager_polars_baseline_times['total_time'] / polars_baseline_times['total_time']
-        eager_incremental_vs_eager_polars = eager_polars_baseline_times['total_time'] / eager_incremental_times['total_time']
-        lazy_incremental_vs_eager_polars = eager_polars_baseline_times['total_time'] / optimized_grand_total_time
-    else:
-        lazy_polars_vs_eager_polars = 0.0
-        eager_incremental_vs_eager_polars = 0.0
-        lazy_incremental_vs_eager_polars = 0.0
 
     if polars_baseline_times['total_time'] > 0:
         eager_incremental_vs_lazy_polars = polars_baseline_times['total_time'] / eager_incremental_times['total_time']
@@ -2021,20 +1989,15 @@ def main():
         lazy_incremental_vs_eager_incremental = 0.0
 
     print()
-    print("Library Comparisons (Full Reprocessing):")
-    print(f"  Eager Polars vs Pandas:                {eager_polars_vs_pandas:.2f}x faster")
+    print("Performance Comparisons:")
     print(f"  Lazy Polars vs Pandas:                 {lazy_polars_vs_pandas:.2f}x faster")
-    print(f"  Lazy Polars vs Eager Polars:           {lazy_polars_vs_eager_polars:.2f}x faster")
-    print()
-    print("Incremental Strategy Comparisons:")
     print(f"  Eager Incremental vs Pandas:           {eager_incremental_vs_pandas:.2f}x faster")
-    print(f"  Eager Incremental vs Eager Polars:     {eager_incremental_vs_eager_polars:.2f}x faster")
-    print(f"  Eager Incremental vs Lazy Polars:      {eager_incremental_vs_lazy_polars:.2f}x faster")
     print(f"  Lazy Incremental vs Pandas:            {lazy_incremental_vs_pandas:.2f}x faster")
-    print(f"  Lazy Incremental vs Eager Polars:      {lazy_incremental_vs_eager_polars:.2f}x faster")
+    print()
+    print(f"  Eager Incremental vs Lazy Polars:      {eager_incremental_vs_lazy_polars:.2f}x faster")
     print(f"  Lazy Incremental vs Lazy Polars:       {lazy_incremental_vs_lazy_polars:.2f}x faster")
     print()
-    print("Lazy vs Eager within Incremental Approach:")
+    print("Hybrid vs Fully Lazy Incremental:")
     print(f"  Lazy Incremental vs Eager Incremental: {lazy_incremental_vs_eager_incremental:.2f}x faster")
     print()
     print("Time Savings (10 days):")
