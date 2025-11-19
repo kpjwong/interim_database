@@ -6,11 +6,11 @@ A comprehensive benchmark comparing **5 different approaches** to processing lar
 
 This proof-of-concept explores optimal strategies for processing millions of daily transaction records, comparing:
 
-1. **Traditional Pandas** – Baseline Python workflow, full reprocessing
-2. **Eager Polars Baseline** – Full reprocessing with Polars eager execution
-3. **Lazy Polars Baseline** – Full reprocessing with Polars lazy query planning
-4. **Eager Incremental (Hybrid)** – Incremental updates using lazy filters + eager transforms
-5. **Lazy Incremental** – Fully lazy incremental pipeline backed by database state
+1. **Traditional Pandas** - Baseline Python workflow, full reprocessing
+2. **Eager Polars Baseline** - Full reprocessing with Polars eager execution
+3. **Lazy Polars Baseline** - Full reprocessing with Polars lazy query planning
+4. **Eager Incremental (Hybrid)** - Incremental updates using lazy filters + eager transforms
+5. **Lazy Incremental** - Fully lazy incremental pipeline backed by database state
 
 ## Key Results
 

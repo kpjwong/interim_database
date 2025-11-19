@@ -3,7 +3,7 @@
 ## Executive Summary
 - Five processing strategies were benchmarked across **10 days of ~5M rows/day** for `client_1`.
 - The **lazy incremental** pipeline delivered the fastest end-to-end runtime at **18.49s**, edging out eager Polars full reprocessing.
-- Switching from pandas to Polars alone cuts runtime by more than four minutes per 10-day load; incremental techniques add another 1.4–1.5x boost over lazy full reprocessing.
+- Switching from pandas to Polars alone cuts runtime by more than four minutes per 10-day load; incremental techniques add another 1.4-1.5x boost over lazy full reprocessing.
 - Unzip I/O accounts for ~75% of wall-clock time in every scenario, so the real savings come from reducing compute work.
 
 ## Benchmark Configuration
@@ -65,9 +65,9 @@
   - Lazy Incremental: 58.37s
 
 ## Key Insights
-- **I/O dominates.** Every scenario spends ~14–15s unzipping. Algorithmic speedups matter, but I/O optimization (parallel unzip, caching) would unlock the next tier.
+- **I/O dominates.** Every scenario spends ~14-15s unzipping. Algorithmic speedups matter, but I/O optimization (parallel unzip, caching) would unlock the next tier.
 - **Eager Polars is ideal for recompute jobs.** When everything must be reprocessed, avoiding lazy planning delivers the fastest wall-clock time.
-- **Incremental strategies shine as history grows.** Even on a 10-day sample, filtering to new data produces ~1.4–1.5x gains over lazy full reprocessing. Benefits compound once history exceeds 100M rows.
+- **Incremental strategies shine as history grows.** Even on a 10-day sample, filtering to new data produces ~1.4-1.5x gains over lazy full reprocessing. Benefits compound once history exceeds 100M rows.
 - **Hybrid vs fully lazy is a trade-off.** Hybrid eager offers lower variance and simpler debugging, while fully lazy slightly wins on runtime and memory.
 
 ## Methodology
