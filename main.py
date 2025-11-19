@@ -153,7 +153,12 @@ def process_transactions_eager(
 ) -> PipelineArtifacts:
     """
     Clean, enrich, and aggregate transaction data using Polars EAGER execution.
-    This version uses immediate execution (read_csv) instead of lazy evaluation.
+
+    This hybrid approach:
+    1. Uses scan_csv for lazy loading
+    2. Applies date filter lazily (predicate pushdown for efficient I/O)
+    3. Collects filtered data into memory
+    4. Performs all subsequent operations eagerly (immediate execution)
     """
     # Load static tables (still lazy for lookups)
     sku_lookup_lazy, zip_lookup_lazy = get_static_tables()
@@ -161,10 +166,13 @@ def process_transactions_eager(
     sku_lookup = sku_lookup_lazy.collect()
     zip_lookup = zip_lookup_lazy.collect()
 
-    # EAGER: Use read_csv instead of scan_csv
-    source = pl.read_csv(csv_path, schema_overrides=TRANSACTION_DTYPES)
+    # HYBRID: Start with lazy scan for predicate pushdown
+    source_lazy = pl.scan_csv(csv_path, schema_overrides=TRANSACTION_DTYPES)
     if last_processed_date:
-        source = source.filter(pl.col("transaction_date") > last_processed_date)
+        source_lazy = source_lazy.filter(pl.col("transaction_date") > last_processed_date)
+
+    # Collect filtered data into memory, then operate eagerly
+    source = source_lazy.collect()
 
     # All operations now execute eagerly
     with_flags = source.with_columns(
